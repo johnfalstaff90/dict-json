@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dictionary Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="language-buttons">
+            <button onclick="switchDirectory('EN-DU')">EN-DU</button>
+            <button onclick="switchDirectory('DE-EN')">DE-EN</button>
+            <button onclick="switchDirectory('EN-RU')">EN-RU</button>
+            <button onclick="switchDirectory('RU-EN')">RU-EN</button>
+            <button onclick="switchDirectory('EN-LA')">EN-LA</button>
+            <button onclick="switchDirectory('EN-GR')">EN-GR</button>
+            <button onclick="switchDirectory('EN-SP')">EN-SP</button>
+            <button onclick="switchDirectory('EN-IT')">EN-IT</button>
+            <button onclick="switchDirectory('EN-PR')">EN-PR</button>
+            <button onclick="switchDirectory('EN-CN')">EN-CN</button>
+            <button onclick="switchDirectory('EN-KR')">EN-KR</button>
+            <button onclick="switchDirectory('EN-JP')">EN-JP</button>
+        </div>
+        <h1>Dictionary Search</h1>
+        <input type="text" id="search-input" placeholder="Search for a word...">
+        <button onclick="searchWord()">Search</button>
+        <div class="content">
+            <div id="results" contenteditable="true"></div>
+            <button onclick="saveResults()">Save Results</button>
+        </div>
+    </div>
+    <div class="side-panel">
+        <div class="button-column">
+            <button onclick="execCmd('bold')">Bold</button>
+            <button onclick="execCmd('underline')">Underline</button>
+            <button onclick="execCmd('insertOrderedList')">Numbered List</button>
+            <button onclick="execCmd('insertUnorderedList')">Bulleted List</button>
+        </div>
+    </div>
+    <div class="color-panel">
+        <div class="color-grid">
+            <button class="color-button" style="background-color: #FF0000;" onclick="setHighlightColor('#FF0000')"></button>
+            <button class="color-button" style="background-color: #00FF00;" onclick="setHighlightColor('#00FF00')"></button>
+            <button class="color-button" style="background-color: #0000FF;" onclick="setHighlightColor('#0000FF')"></button>
+            <button class="color-button" style="background-color: #FFFF00;" onclick="setHighlightColor('#FFFF00')"></button>
+            <button class="color-button" style="background-color: #00FFFF;" onclick="setHighlightColor('#00FFFF')"></button>
+            <button class="color-button" style="background-color: #FF00FF;" onclick="setHighlightColor('#FF00FF')"></button>
+            <button class="color-button" style="background-color: #000000;" onclick="setHighlightColor('#000000')"></button>
+            <button class="color-button" style="background-color: #FFFFFF;" onclick="setHighlightColor('#FFFFFF')"></button>
+            <button class="color-button" style="background-color: #808080;" onclick="setHighlightColor('#808080')"></button>
+        </div>
+        <div class="text-size-buttons">
+            <button onclick="execCmd('formatBlock', '<p>')">Normal Text</button>
+            <button onclick="execCmd('formatBlock', '<h1>')">Header 1</button>
+        </div>
+        <div class="font-size-buttons">
+            <button onclick="execCmd('fontSize', '2')">12px</button>
+            <button onclick="execCmd('fontSize', '3')">16px</button>
+            <button onclick="execCmd('fontSize', '4')">20px</button>
+        </div>
+        <div class="line-spacing-buttons">
+            <button onclick="applyUniformStyle()">Make Text Uniform</button>
+        </div>
+        <div class="remove-empty-lines-button">
+            <button onclick="removeEmptyLines()">Remove Empty Lines</button>
+        </div>
+        <div class="search-bar">
+            <input type="text" id="search-bar" placeholder="Search in text...">
+            <button onclick="searchInText()">Search</button>
+        </div>
+        <div class="highlight-buttons">
+            <button onclick="highlightSelectedText()">Highlight Selected Text</button>
+        </div>
+    </div>
+    <div class="search-history-panel">
+        <h3>Search History</h3>
+        <div id="search-history"></div>
+        <button onclick="saveSearchHistory()">Save Search History</button>
+        <button onclick="loadSearchHistory()">Load Search History</button>
+    </div>
+
+    <script>
+        let currentDirectory = 'EN-RU';
+        let highlightColor = '#00FF00'; // Default highlight color
+        let selectedButton = null;
+        let searchHistory = [];
+
+        function switchDirectory(directory) {
+            if (selectedButton) {
+                selectedButton.style.backgroundColor = '';
+                selectedButton.style.color = '';
+            }
+            currentDirectory = directory;
+            document.getElementById('search-input').value = '';
+            document.getElementById('results').innerHTML = '';
+            selectedButton = event.target;
+            selectedButton.style.backgroundColor = '#0056b3';
+            selectedButton.style.color = '#fff';
+        }
+
+        function searchWord() {
+            const query = document.getElementById('search-input').value.trim().toLowerCase();
+            fetch('/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({ query: query, directory: currentDirectory })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.innerHTML = '';
+                if (data.length > 0) {
+                    let currentFilename = '';
+                    data.forEach(item => {
+                        const word = item[0];
+                        const definition = item[1].replace(/\n/g, '<br>');
+                        const filteredDefinition = filterEmptyLines(definition);
+                        const filename = item[2];
+                        if (filename !== currentFilename) {
+                            currentFilename = filename;
+                            resultsDiv.innerHTML += `<div class="red-bar">Results from ${filename}</div>`;
+                        }
+                        resultsDiv.innerHTML += `<div><strong>${word}</strong>: ${colorNumbers(filteredDefinition)}</div>`;
+                    });
+                } else {
+                    resultsDiv.innerHTML = '<div>No results found</div>';
+                }
+                addToSearchHistory(query);
+            });
+        }
+
+        function saveResults() {
+            const query = document.getElementById('search-input').value.trim().toLowerCase();
+            const content = document.getElementById('results').innerHTML;
+            fetch('/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({ query: query, directory: currentDirectory, content: content })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+            });
+        }
+
+        function execCmd(command, value = null) {
+            document.execCommand(command, false, value);
+        }
+
+        function applyUniformStyle() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.classList.add('uniform-text');
+        }
+
+        function removeEmptyLines() {
+            const resultsDiv = document.getElementById('results');
+            const nodes = resultsDiv.childNodes;
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const node = nodes[i];
+                if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === '') {
+                    resultsDiv.removeChild(node);
+                } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'P' && node.textContent.trim() === '') {
+                    resultsDiv.removeChild(node);
+                }
+            }
+        }
+
+        function filterEmptyLines(text) {
+            const lines = text.split('<br>');
+            const filteredLines = lines.filter(line => line.trim() !== '');
+            return filteredLines.join('<br>');
+        }
+
+        function setHighlightColor(color) {
+            highlightColor = color;
+        }
+
+        function searchInText() {
+            const query = document.getElementById('search-bar').value.trim().toLowerCase();
+            const resultsDiv = document.getElementById('results');
+            const content = resultsDiv.innerHTML;
+            const regex = new RegExp(`\\b${query}\\b`, 'gi');
+            const highlightedContent = content.replace(regex, match => `<mark style="background-color: ${highlightColor};">${match}</mark>`);
+            resultsDiv.innerHTML = highlightedContent;
+            addToSearchHistory(query);
+        }
+
+        function highlightSelectedText() {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const span = document.createElement('span');
+                span.style.backgroundColor = highlightColor;
+                span.style.color = 'black';
+                range.surroundContents(span);
+            }
+        }
+
+        function colorNumbers(text) {
+            const numberRegex = /\d+/g;
+            return text.replace(numberRegex, match => `<span style="color: green;">${match}</span>`);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            if (event.ctrlKey && event.key === 'f') {
+                event.preventDefault();
+                document.getElementById('search-bar').focus();
+            }
+            if (event.ctrlKey && event.key === '1') {
+                event.preventDefault();
+                execCmd('formatBlock', '<h1>');
+            }
+            if (event.altKey && event.key === 'v') {
+                event.preventDefault();
+                searchSelectedWord();
+            }
+            if (event.altKey && event.key === 'c') {
+                event.preventDefault();
+                searchSelectedWordDefinitions();
+            }
+            if (event.key === 'ç') {
+                event.preventDefault();
+                searchWord();
+            }
+        });
+
+        function searchSelectedWord() {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const selectedText = range.toString().trim();
+                if (selectedText) {
+                    document.getElementById('search-bar').value = selectedText;
+                    searchInText();
+                }
+            }
+        }
+
+        function searchSelectedWordDefinitions() {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const selectedText = range.toString().trim();
+                if (selectedText) {
+                    const query = selectedText.toLowerCase();
+                    fetch('/search', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({ query: query, directory: currentDirectory })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        const resultsDiv = document.getElementById('results');
+                        resultsDiv.innerHTML = '';
+                        if (data.length > 0) {
+                            let currentFilename = '';
+                            data.forEach(item => {
+                                const word = item[0];
+                                const definition = item[1].replace(/\n/g, '<br>');
+                                const filteredDefinition = filterEmptyLines(definition);
+                                const filename = item[2];
+                                if (filename !== currentFilename) {
+                                    currentFilename = filename;
+                                    resultsDiv.innerHTML += `<div class="red-bar">Results from ${filename}</div>`;
+                                }
+                                resultsDiv.innerHTML += `<div><strong>${word}</strong>: ${colorNumbers(filteredDefinition)}</div>`;
+                            });
+                        } else {
+                            resultsDiv.innerHTML = '<div>No results found</div>';
+                        }
+                        addToSearchHistory(query);
+                    });
+                }
+            }
+        }
+
+        function addToSearchHistory(query) {
+            const historyDiv = document.getElementById('search-history');
+            const existingButton = Array.from(historyDiv.getElementsByTagName('button')).find(button => button.textContent === query);
+            if (!existingButton) {
+                const button = document.createElement('button');
+                button.textContent = query;
+                button.onclick = () => searchWordFromHistory(query);
+                historyDiv.appendChild(button);
+                searchHistory.push(query);
+            }
+        }
+
+        function searchWordFromHistory(query) {
+            document.getElementById('search-input').value = query;
+            searchWord();
+        }
+
+        function saveSearchHistory() {
+            localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
+        }
+
+        function loadSearchHistory() {
+            const savedHistory = localStorage.getItem('searchHistory');
+            if (savedHistory) {
+                searchHistory = JSON.parse(savedHistory);
+                const historyDiv = document.getElementById('search-history');
+                historyDiv.innerHTML = ''; // Clear existing history
+                searchHistory.forEach(query => {
+                    const button = document.createElement('button');
+                    button.textContent = query;
+                    button.onclick = () => searchWordFromHistory(query);
+                    historyDiv.appendChild(button);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
